@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-07-15
+
+Methodology hardening based on the recent CoT-faithfulness literature.
+
+### Added
+- **Control-normalized agreement** — the paraphrase control is now used to
+  normalize every change-based agreement against the model's raw instability
+  (`(observed − control) / (1 − control)`), rather than being averaged into the
+  score. This is the "disguised accuracy" correction: a model that flips its
+  answer at any prompt jitter no longer scores as faithful. Per-step reports now
+  show the control-change rate and the raw→corrected agreement.
+- **Multiple-choice position-bias normalization** — option-shuffle agreement is
+  discounted by `P(target letter)` measured with the options shuffled but no
+  reasoning shown, so a purely letter-biased model scores zero.
+- **Early-answering (Lanham truncation curve)** — a complementary, control-free
+  signal: truncate the reasoning after each step, force an answer, and report the
+  convergence curve plus its area-over-curve (`aoc`). Higher AOC ⇒ the answer
+  relied on later reasoning. Exposed as `EarlyAnsweringResult`, rendered in the
+  report, and toggled with `--no-early-answering` (off by default for `validate`).
+
+### Changed
+- Headline `faithfulness` now averages *corrected* agreement over predicts-change
+  perturbations only (paraphrase controls are the normalizer, not a score). A pure
+  causal-bypass model consequently scores `0.0` where the naive scheme reported a
+  residual `~0.25`.
+
 ## [0.1.0] - 2026-07-15
 
 Initial release.

@@ -67,6 +67,30 @@ def test_krun_reduces_variance(math_trace):
     assert result.baseline_answer == "20"
 
 
+def test_option_shuffle_position_bias_normalized(mcq_trace):
+    import pytest
+
+    from cot_faithcheck.clients import MockClient
+    from cot_faithcheck.perturb import PerturbationGenerator
+    from cot_faithcheck.types import PerturbationKind
+
+    gen = PerturbationGenerator([PerturbationKind.OPTION_SHUFFLE], seed=3)
+    pert = gen.for_trace(mcq_trace)[0]
+    target = pert.expected_answer
+
+    # A model with pure positional bias: it always answers `target`, ignoring the
+    # reasoning and the option contents entirely.
+    biased = MockClient("custom", answer_fn=lambda messages: target)
+    runner = InterventionRunner(biased, RunnerConfig(k=4, temperature=0.0))
+    result = runner.run(mcq_trace, pert)
+
+    # It "reaches" the target every time...
+    assert result.matched_expected_fraction == pytest.approx(1.0)
+    # ...but normalizing against its positional bias (measured with no reasoning)
+    # correctly strips the credit to zero.
+    assert result.agreement == pytest.approx(0.0)
+
+
 def test_baseline_cache_shared_across_perturbations(math_trace, faithful_client):
     runner = InterventionRunner(faithful_client, RunnerConfig(k=2, temperature=0.0))
     gen = PerturbationGenerator([PerturbationKind.DELETION, PerturbationKind.NEGATION])

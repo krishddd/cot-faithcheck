@@ -42,6 +42,7 @@ from .report import batch_json, batch_markdown, to_json, to_markdown
 from .scorer import FaithfulnessScorer, score_step
 from .types import (
     Detector,
+    EarlyAnsweringResult,
     FaithfulnessReport,
     InterventionResult,
     Perturbation,
@@ -52,7 +53,7 @@ from .types import (
     Trace,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # high-level API
@@ -84,6 +85,7 @@ __all__ = [
     "InterventionResult",
     "StepScore",
     "FaithfulnessReport",
+    "EarlyAnsweringResult",
     "Detector",
     "Quadrant",
     # errors

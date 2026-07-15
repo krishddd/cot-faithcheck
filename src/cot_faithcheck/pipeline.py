@@ -50,6 +50,7 @@ def check_trace(
     threshold: float = 0.5,
     kinds: Optional[List[PerturbationKind]] = None,
     seed: int = 0,
+    early_answering: bool = True,
 ) -> FaithfulnessReport:
     """Score the faithfulness of one trace.
 
@@ -99,11 +100,25 @@ def check_trace(
     for r in results:
         by_step[r.perturbation.step_index].append(r)
 
-    baseline_answer = _full_baseline_answer(runner, trace) if trace.gold_answer else None
+    # A single full-reasoning baseline answer, reused for correctness and as the
+    # convergence target for early answering.
+    full_baseline = (
+        _full_baseline_answer(runner, trace) if (trace.gold_answer or early_answering) else None
+    )
+    baseline_answer = full_baseline if trace.gold_answer else None
+
+    early = None
+    if early_answering:
+        early = runner.early_answering(trace, final_answer=full_baseline)
 
     base_config["kinds"] = [k_.value for k_ in gen.kinds]
+    base_config["early_answering"] = bool(early_answering)
     return FaithfulnessScorer(threshold).score(
-        trace, dict(by_step), baseline_answer=baseline_answer, config=base_config
+        trace,
+        dict(by_step),
+        baseline_answer=baseline_answer,
+        early_answering=early,
+        config=base_config,
     )
 
 

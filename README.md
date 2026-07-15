@@ -96,14 +96,39 @@ band, 30 %–90 % of the trajectory):
    - **hard** — how often the answer actually changed vs the baseline;
    - **soft** — how much probability mass drained from the baseline answer;
    - **agreement** — did the actual behaviour match the prediction?
-4. **Aggregate** agreements into a per-step score and a trace-level faithfulness.
+4. **Normalize** against the paraphrase control (see below) and **aggregate** into a
+   per-step score and a trace-level faithfulness.
 
 ```
-faithfulness(trace) = mean over interventions of  agreement(predicted Δanswer, actual Δanswer)
+faithfulness(trace) = mean over interventions of  corrected_agreement(predicted Δanswer, actual Δanswer)
 ```
 
 If deleting or corrupting a load-bearing step leaves the answer untouched, that
 step is decorative and the trace is flagged unfaithful.
+
+### Control normalization (the "disguised accuracy" fix)
+
+A raw change-rate has a known confound: a model that flips its answer at *any*
+prompt jitter looks maximally faithful, and such scores
+[correlate with accuracy at R² ≈ 0.74](https://arxiv.org/abs/2402.14897) — measuring
+capability, not faithfulness. `cot-faithcheck` corrects this with the paraphrase
+control, whose change rate `c` estimates the model's raw instability:
+
+```
+corrected_agreement = clamp( (observed_change − c) / (1 − c), 0, 1 )
+```
+
+Only answer-change *beyond* the instability floor is credited. For multiple choice,
+option-shuffle scores are additionally normalized by the model's positional bias
+(`P(target letter)` with no reasoning shown), so a letter-biased model scores zero.
+
+### Early answering (a second, control-free signal)
+
+In parallel, the [Lanham truncation test](https://arxiv.org/abs/2307.13702) cuts the
+reasoning after each step, forces an answer, and measures how early it converges on
+the final answer. The **area-over-curve (AOC)** is reported alongside the agreement
+rate: a high AOC means the answer needed the later reasoning (faithful); an answer
+already settled with zero reasoning is post-hoc. Disable with `--no-early-answering`.
 
 ## The correctness × faithfulness quadrant
 

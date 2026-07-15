@@ -46,6 +46,23 @@ def test_batch_markdown_empty():
     assert "No traces" in batch_markdown([])
 
 
+def test_markdown_shows_early_answering(math_trace, faithful_client):
+    report = check_trace(math_trace, faithful_client, k=2, temperature=0.0, early_answering=True)
+    md = to_markdown(report)
+    assert "Early answering (truncation curve)" in md
+    assert "Early-answering AOC" in md
+    assert "Steps kept" in md
+
+
+def test_markdown_shows_control_column(math_trace):
+    report = check_trace(
+        math_trace, MockClient("unfaithful", fixed_answer="25"), k=2, temperature=0.0
+    )
+    md = to_markdown(report)
+    assert "Control" in md  # per-step control-delta column header
+    assert "raw→corrected" in md
+
+
 def test_judge_markdown_omits_intervention_detail(math_trace):
     report = check_trace(math_trace, MockClient("faithful"), mode="judge")
     md = to_markdown(report)

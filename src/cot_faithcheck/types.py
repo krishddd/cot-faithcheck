@@ -133,13 +133,22 @@ class InterventionResult:
     #: Empirical P(baseline_answer) before vs after — the soft metric.
     baseline_prob_before: float
     baseline_prob_after: float
-    #: How well actual behaviour matched the prediction, in [0, 1].
+    #: Raw agreement between predicted and actual answer-change, in [0, 1].
     agreement: float
+    #: Agreement after normalising against the paraphrase-control instability
+    #: baseline (the "disguised accuracy" correction). ``None`` until the scorer
+    #: fills it in; equals ``agreement`` when no control is available.
+    corrected_agreement: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["perturbation"] = self.perturbation.to_dict()
         return d
+
+    @property
+    def effective_agreement(self) -> float:
+        """The corrected agreement when present, else the raw agreement."""
+        return self.corrected_agreement if self.corrected_agreement is not None else self.agreement
 
 
 @dataclass
@@ -148,9 +157,14 @@ class StepScore:
 
     step_index: int
     step_text: str
-    faithfulness: float  # mean agreement across perturbations, in [0, 1]
+    faithfulness: float  # mean corrected agreement across perturbations, in [0, 1]
     soft_faithfulness: float  # mean |P(baseline) drop| across perturbations
     interventions: List[InterventionResult] = field(default_factory=list)
+    #: The step's answer-change rate under the meaning-preserving paraphrase
+    #: control — a measure of raw model instability used to correct the score.
+    control_change_rate: float = 0.0
+    #: Whether ``faithfulness`` was control-corrected (a paraphrase was available).
+    corrected: bool = False
     #: Present only for the LLM-judge detector.
     judge_flags: List[str] = field(default_factory=list)
     judge_rationale: str = ""
@@ -159,6 +173,33 @@ class StepScore:
         d = asdict(self)
         d["interventions"] = [i.to_dict() for i in self.interventions]
         return d
+
+
+@dataclass
+class EarlyAnsweringResult:
+    """Lanham-style early-answering truncation analysis.
+
+    ``convergence`` pairs each truncation point (keep the first ``kept`` steps,
+    force an answer) with the fraction of k runs that already match the model's
+    *final* answer. A faithful trace only converges on its answer late; a trace
+    whose answer is settled after little or no reasoning is post-hoc.
+
+    ``aoc`` (area over the curve) is the mean, over truncation points, of
+    ``1 - convergence`` — higher means the answer stayed unsettled until more
+    reasoning was supplied, i.e. the reasoning mattered (more faithful).
+    """
+
+    final_answer: str
+    #: (kept_steps, fraction_matching_final) in increasing ``kept`` order.
+    convergence: List[Any] = field(default_factory=list)
+    aoc: float = 0.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "final_answer": self.final_answer,
+            "convergence": [list(p) for p in self.convergence],
+            "aoc": self.aoc,
+        }
 
 
 @dataclass
@@ -178,6 +219,8 @@ class FaithfulnessReport:
     #: Names of the FINE-CoT unfaithfulness principles that fired (judge or
     #: heuristics derived from the intervention results).
     unfaithfulness_flags: List[str] = field(default_factory=list)
+    #: Complementary Lanham early-answering analysis (intervention detector only).
+    early_answering: Optional[EarlyAnsweringResult] = None
     config: Dict[str, Any] = field(default_factory=dict)
     summary: str = ""
 
@@ -186,6 +229,8 @@ class FaithfulnessReport:
         d["detector"] = self.detector.value
         d["quadrant"] = self.quadrant.value
         d["step_scores"] = [s.to_dict() for s in self.step_scores]
+        if self.early_answering is not None:
+            d["early_answering"] = self.early_answering.to_dict()
         return d
 
     def weakest_step(self) -> Optional[StepScore]:

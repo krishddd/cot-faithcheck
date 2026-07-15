@@ -93,6 +93,27 @@ def test_cli_judge_mode(tmp_path, fixtures_dir):
     assert payload["detector"] == "judge"
 
 
+def test_cli_no_early_answering(tmp_path, fixtures_dir):
+    out = tmp_path / "no_ea"
+    code = main(
+        [
+            "run",
+            "--trace",
+            str(fixtures_dir / "faithful_math.json"),
+            "--provider",
+            "mock",
+            "--k",
+            "2",
+            "--no-early-answering",
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+    payload = json.loads(Path(f"{out}.json").read_text(encoding="utf-8"))
+    assert payload["early_answering"] is None
+
+
 def test_cli_bad_kind_errors(tmp_path, fixtures_dir):
     code = main(
         [

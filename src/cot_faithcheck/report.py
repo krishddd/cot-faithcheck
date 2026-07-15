@@ -41,6 +41,11 @@ def to_markdown(report: FaithfulnessReport) -> str:
     )
     if report.detector == Detector.INTERVENTION:
         lines.append(f"**Soft faithfulness (prob. mass shift):** {report.soft_faithfulness:.3f}  ")
+    if report.early_answering is not None and report.early_answering.convergence:
+        lines.append(
+            f"**Early-answering AOC:** {report.early_answering.aoc:.3f} "
+            f"`{_bar(report.early_answering.aoc)}` (higher = answer relies on later reasoning)  "
+        )
     lines.append(f"**Detector:** {report.detector.value}  ")
     lines.append(f"**Quadrant:** {report.quadrant.value}  ")
     if report.answer_correct is not None:
@@ -61,12 +66,13 @@ def to_markdown(report: FaithfulnessReport) -> str:
         lines.append("## Per-step faithfulness")
         lines.append("")
         if report.detector == Detector.INTERVENTION:
-            lines.append("| Step | Faithfulness | Soft | Interventions | Reasoning |")
-            lines.append("|-----:|:------------:|:----:|:-------------:|:----------|")
+            lines.append("| Step | Faithfulness | Soft | Control Δ | Interventions | Reasoning |")
+            lines.append("|-----:|:------------:|:----:|:---------:|:-------------:|:----------|")
             for s in report.step_scores:
+                ctrl = f"{s.control_change_rate:.2f}" if s.corrected else "—"
                 lines.append(
                     f"| {s.step_index} | {s.faithfulness:.2f} `{_bar(s.faithfulness)}` "
-                    f"| {s.soft_faithfulness:.2f} | {len(s.interventions)} "
+                    f"| {s.soft_faithfulness:.2f} | {ctrl} | {len(s.interventions)} "
                     f"| {_truncate(s.step_text)} |"
                 )
         else:
@@ -88,19 +94,43 @@ def to_markdown(report: FaithfulnessReport) -> str:
                 continue
             lines.append(f"### Step {s.step_index}: {_truncate(s.step_text, 100)}")
             lines.append("")
-            lines.append("| Perturbation | Predicts change | Changed | Agreement | Notes |")
-            lines.append("|:-------------|:---------------:|:-------:|:---------:|:------|")
+            lines.append(
+                "| Perturbation | Predicts change | Changed | Agreement (raw→corrected) | Notes |"
+            )
+            lines.append(
+                "|:-------------|:---------------:|:-------:|:-------------------------:|:------|"
+            )
             for r in s.interventions:
                 p = r.perturbation
                 notes = []
                 if r.matched_expected_fraction is not None:
                     notes.append(f"→expected {r.matched_expected_fraction:.2f}")
                 notes.append(f"baseline={r.baseline_answer or '∅'}")
+                if p.predicts_change:
+                    agr = f"{r.agreement:.2f} → {r.effective_agreement:.2f}"
+                else:
+                    agr = "control"
                 lines.append(
                     f"| {p.kind.value} | {p.predicts_change} | {r.changed_fraction:.2f} "
-                    f"| {r.agreement:.2f} | {'; '.join(notes)} |"
+                    f"| {agr} | {'; '.join(notes)} |"
                 )
             lines.append("")
+
+    # Early-answering truncation curve.
+    if report.early_answering is not None and report.early_answering.convergence:
+        ea = report.early_answering
+        lines.append("## Early answering (truncation curve)")
+        lines.append("")
+        lines.append(
+            f"Convergence toward the final answer `{ea.final_answer or '∅'}` as reasoning is "
+            f"revealed step by step. AOC = {ea.aoc:.3f} (higher ⇒ the answer needed the reasoning)."
+        )
+        lines.append("")
+        lines.append("| Steps kept | P(matches final answer) | |")
+        lines.append("|-----------:|:-----------------------:|:--|")
+        for kept, frac in ea.convergence:
+            lines.append(f"| {kept} | {frac:.2f} | `{_bar(frac)}` |")
+        lines.append("")
 
     lines.append("---")
     cfg = ", ".join(f"{k}={v}" for k, v in report.config.items())

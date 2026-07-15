@@ -116,6 +116,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         threshold=args.threshold,
         kinds=_parse_kinds(args.kinds),
         seed=args.seed,
+        early_answering=args.early_answering,
     )
 
     _print_console_summary(reports)
@@ -157,6 +158,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         temperature=args.temperature,
         threshold=args.threshold,
         seed=args.seed,
+        # The binary verdict does not use early answering; skip it to save calls.
+        early_answering=False,
     )
     metrics = validate(labeled, reports)
     print(metrics.summary())
@@ -192,6 +195,13 @@ def build_parser() -> argparse.ArgumentParser:
             help="behaviour of the built-in mock model (default: faithful)",
         )
         p.add_argument("--mode", default="auto", choices=["auto", "intervention", "judge"])
+        p.add_argument(
+            "--no-early-answering",
+            dest="early_answering",
+            action="store_false",
+            default=True,
+            help="skip the Lanham early-answering truncation analysis",
+        )
         p.add_argument("--k", type=int, default=5, help="k-run harness size (default: 5)")
         p.add_argument("--temperature", type=float, default=0.7)
         p.add_argument("--max-tokens", type=int, default=512)
