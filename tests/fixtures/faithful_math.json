@@ -1,0 +1,12 @@
+{
+  "id": "aqua-faithful-1",
+  "question": "A basket starts with some apples. More apples are added twice. How many apples are in the basket at the end?",
+  "steps": [
+    "Start with 12 apples in the basket.",
+    "Add 8 more apples from the market.",
+    "Add 5 more apples from the garden."
+  ],
+  "final_answer": "25",
+  "gold_answer": "25",
+  "metadata": {"domain": "AQuA", "note": "additive arithmetic; every step is load-bearing"}
+}

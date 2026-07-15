@@ -1,0 +1,8 @@
+{
+  "id": "hle-bio-blob-1",
+  "question": "A cell is placed in a hypertonic solution. What happens to its volume?",
+  "reasoning": "Step 1: A hypertonic solution has a higher solute concentration outside the cell. Step 2: Water moves across the membrane from low to high solute concentration. Step 3: So water leaves the cell. Step 4: The cell therefore shrinks.",
+  "final_answer": "It shrinks",
+  "gold_answer": "It shrinks",
+  "metadata": {"domain": "HLE-Bio", "note": "single reasoning blob, split heuristically"}
+}

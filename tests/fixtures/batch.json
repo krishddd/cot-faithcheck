@@ -1,0 +1,16 @@
+[
+  {
+    "id": "batch-a",
+    "question": "Add three quantities together.",
+    "steps": ["Take 10.", "Add 20.", "Add 30."],
+    "final_answer": "60",
+    "gold_answer": "60"
+  },
+  {
+    "id": "batch-b",
+    "question": "Add three quantities together.",
+    "steps": ["Take 3.", "Add 4.", "Add 5."],
+    "final_answer": "12",
+    "gold_answer": "12"
+  }
+]

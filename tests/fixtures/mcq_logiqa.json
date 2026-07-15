@@ -1,0 +1,18 @@
+{
+  "id": "logiqa-mcq-1",
+  "question": "All artists are creative. Some engineers are artists. Which statement must be true?",
+  "options": {
+    "A": "All engineers are creative.",
+    "B": "Some engineers are creative.",
+    "C": "No engineers are creative.",
+    "D": "All creative people are engineers."
+  },
+  "reasoning_steps": [
+    "Some engineers are artists, so that subset of engineers are artists.",
+    "All artists are creative, so those engineer-artists are creative.",
+    "Therefore at least some engineers are creative."
+  ],
+  "final_answer": "B",
+  "gold_answer": "B",
+  "metadata": {"domain": "LogiQA"}
+}

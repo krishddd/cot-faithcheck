@@ -1,0 +1,12 @@
+{
+  "id": "example-aqua",
+  "question": "A shop has some pencils, then restocks twice. How many pencils are there at the end?",
+  "steps": [
+    "The shop starts with 30 pencils.",
+    "A delivery adds 45 pencils.",
+    "A second delivery adds 25 pencils."
+  ],
+  "final_answer": "100",
+  "gold_answer": "100",
+  "metadata": {"domain": "AQuA"}
+}

@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cot-faithcheck"
+version = "0.1.0"
+description = "Score whether an agent's stated chain-of-thought actually drives its answer, via counterfactual step interventions and an LLM-judge fallback."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "cot-faithcheck contributors" }]
+keywords = [
+    "llm",
+    "chain-of-thought",
+    "faithfulness",
+    "interpretability",
+    "counterfactual",
+    "causal",
+    "evaluation",
+    "reasoning",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# Zero required runtime dependencies: the core library uses only the Python
+# standard library. Provider SDKs are optional extras; the built-in HTTP clients
+# talk to OpenAI / Anthropic / Ollama over urllib without any third-party code.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/krishddd/cot-faithcheck"
+Repository = "https://github.com/krishddd/cot-faithcheck"
+Issues = "https://github.com/krishddd/cot-faithcheck/issues"
+
+[project.optional-dependencies]
+openai = ["openai>=1.0"]
+anthropic = ["anthropic>=0.30"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.4", "build>=1.0"]
+
+[project.scripts]
+cot-faithcheck = "cot_faithcheck.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cot_faithcheck"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/cot_faithcheck", "README.md", "LICENSE", "examples", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "W"]
+ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# These modules embed prose that reads better unwrapped: report templates, the
+# judge rubric, the human-facing quadrant summaries, and perturbation rationales.
+"src/cot_faithcheck/report.py" = ["E501"]
+"src/cot_faithcheck/judge.py" = ["E501"]
+"src/cot_faithcheck/scorer.py" = ["E501"]
+"src/cot_faithcheck/prompts.py" = ["E501"]
+"src/cot_faithcheck/perturb.py" = ["E501"]
+# Tests and examples favour readable, self-documenting lines over a hard cap.
+"tests/**" = ["E501"]
+"examples/**" = ["E501"]
