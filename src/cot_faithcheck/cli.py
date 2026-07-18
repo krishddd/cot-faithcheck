@@ -117,6 +117,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         kinds=_parse_kinds(args.kinds),
         seed=args.seed,
         early_answering=args.early_answering,
+        criticality_threshold=args.criticality_threshold,
     )
 
     _print_console_summary(reports)
@@ -133,10 +134,18 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"\nWrote {json_path} and {md_path}")
 
     if args.fail_under is not None:
-        worst = min(r.faithfulness for r in reports)
-        if worst < args.fail_under:
+        # Fail only when *confident* a trace is below threshold: use the upper bound
+        # of its Wilson CI (falling back to the point estimate when no CI exists),
+        # so a noisy low-k estimate does not trip the gate.
+        def _gate(r):
+            return r.faithfulness_ci.high if r.faithfulness_ci is not None else r.faithfulness
+
+        worst = min(reports, key=_gate)
+        gate = _gate(worst)
+        if gate < args.fail_under:
             print(
-                f"\nFAIL: min agreement {worst:.3f} < --fail-under {args.fail_under:.3f}",
+                f"\nFAIL: trace '{worst.trace_id}' agreement {worst.faithfulness:.3f} "
+                f"(CI upper {gate:.3f}) < --fail-under {args.fail_under:.3f}",
                 file=sys.stderr,
             )
             return 1
@@ -158,6 +167,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         temperature=args.temperature,
         threshold=args.threshold,
         seed=args.seed,
+        criticality_threshold=args.criticality_threshold,
         # The binary verdict does not use early answering; skip it to save calls.
         early_answering=False,
     )
@@ -210,6 +220,13 @@ def build_parser() -> argparse.ArgumentParser:
             type=float,
             default=0.5,
             help="faithful iff agreement >= threshold (default: 0.5)",
+        )
+        p.add_argument(
+            "--criticality-threshold",
+            type=float,
+            default=0.3,
+            help="a step is load-bearing iff its deletion moves the answer at least "
+            "this much; peripheral steps are excluded from the score (default: 0.3)",
         )
         p.add_argument("--seed", type=int, default=0)
 

@@ -26,7 +26,9 @@ from typing import List, Optional
 from .answer import answers_equivalent, extract_answer
 from .clients.base import LLMClient
 from .prompts import build_continuation_messages
+from .stats import wilson_interval
 from .types import (
+    ConfidenceInterval,
     EarlyAnsweringResult,
     InterventionResult,
     Perturbation,
@@ -152,11 +154,16 @@ class InterventionRunner:
         # the model's raw positional bias — how often it picks that letter with the
         # options shuffled but *no* reasoning shown (the disguised-accuracy fix for
         # multiple choice).
+        # The raw agreement is a proportion of the k trials; keep it for the CI.
+        raw_prop = self._agreement(perturbation, changed_fraction, matched_expected)
         if perturbation.kind == PerturbationKind.OPTION_SHUFFLE and matched_expected is not None:
             position_bias = self._position_bias(trace, perturbation, options)
             agreement = _normalize(matched_expected, position_bias)
         else:
-            agreement = self._agreement(perturbation, changed_fraction, matched_expected)
+            agreement = raw_prop
+
+        n = len(perturbed_answers)
+        low, high = wilson_interval(round(raw_prop * n), n)
 
         return InterventionResult(
             perturbation=perturbation,
@@ -167,6 +174,8 @@ class InterventionRunner:
             baseline_prob_before=prob_before,
             baseline_prob_after=prob_after,
             agreement=agreement,
+            ci=ConfidenceInterval(low, high),
+            n_trials=n,
         )
 
     def _position_bias(self, trace: Trace, perturbation: Perturbation, options) -> float:

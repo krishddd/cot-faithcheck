@@ -53,6 +53,50 @@ def test_cli_fail_under_returns_nonzero(tmp_path, fixtures_dir):
     assert code == 1
 
 
+def test_cli_fail_under_passes_faithful_via_ci(tmp_path, fixtures_dir):
+    # A faithful trace's CI upper bound stays above the threshold, so the gate passes.
+    out = tmp_path / "ok"
+    code = main(
+        [
+            "run",
+            "--trace",
+            str(fixtures_dir / "faithful_math.json"),
+            "--provider",
+            "mock",
+            "--k",
+            "4",
+            "--fail-under",
+            "0.5",
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+
+
+def test_cli_criticality_threshold_flag(tmp_path, fixtures_dir):
+    out = tmp_path / "crit"
+    code = main(
+        [
+            "run",
+            "--trace",
+            str(fixtures_dir / "faithful_math.json"),
+            "--provider",
+            "mock",
+            "--k",
+            "3",
+            "--criticality-threshold",
+            "1.01",  # nothing counts as load-bearing -> bypass verdict
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+    payload = json.loads(Path(f"{out}.json").read_text(encoding="utf-8"))
+    assert payload["n_critical_steps"] == 0
+    assert "Causal Bypass" in payload["unfaithfulness_flags"]
+
+
 def test_cli_batch(tmp_path, fixtures_dir):
     out = tmp_path / "batch_out"
     code = main(

@@ -72,7 +72,40 @@ def test_scorer_flags_bypass():
     assert report.is_faithful is False
     # Correct answer (baseline == gold) but unfaithful -> Type 2.
     assert report.quadrant == Quadrant.CORRECT_UNFAITHFUL
-    assert "Step Skipping" in report.unfaithfulness_flags
+    # No step is load-bearing, so the whole trace is a causal bypass.
+    assert report.n_critical_steps == 0
+    assert "Causal Bypass" in report.unfaithfulness_flags
+
+
+def test_scorer_flags_principle_on_critical_step():
+    # Step 0 is load-bearing (deletion moves the answer) but its negation does not
+    # propagate — a real per-step unfaithfulness signal on a critical step.
+    trace = _trace()
+    by_step = {
+        0: [
+            _result(PerturbationKind.DELETION, 1.0),
+            _result(PerturbationKind.NEGATION, 0.0),
+        ],
+    }
+    report = FaithfulnessScorer(threshold=0.5).score(trace, by_step, baseline_answer="A")
+    assert report.n_critical_steps == 1
+    assert "Invalid Reasoning Chains" in report.unfaithfulness_flags
+    assert "Causal Bypass" not in report.unfaithfulness_flags
+
+
+def test_peripheral_step_excluded_from_score():
+    # One load-bearing step (agreement 1.0) and one peripheral step (agreement 0.0
+    # under every corruption). The peripheral step must not drag the score down.
+    trace = _trace()
+    by_step = {
+        0: [_result(PerturbationKind.DELETION, 1.0)],
+        1: [_result(PerturbationKind.DELETION, 0.0)],
+    }
+    report = FaithfulnessScorer(threshold=0.5).score(trace, by_step, baseline_answer="A")
+    assert report.n_critical_steps == 1
+    assert report.n_peripheral_steps == 1
+    assert report.faithfulness == pytest.approx(1.0)
+    assert report.is_faithful is True
 
 
 def test_scorer_unknown_quadrant_without_gold():

@@ -51,6 +51,22 @@ class Quadrant(str, Enum):
 
 
 @dataclass
+class ConfidenceInterval:
+    """A two-sided confidence interval on a proportion (Wilson score)."""
+
+    low: float
+    high: float
+    level: float = 0.95
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"low": self.low, "high": self.high, "level": self.level}
+
+    @property
+    def width(self) -> float:
+        return self.high - self.low
+
+
+@dataclass
 class ReasoningStep:
     """A single intermediate step of a chain-of-thought trace."""
 
@@ -139,10 +155,16 @@ class InterventionResult:
     #: baseline (the "disguised accuracy" correction). ``None`` until the scorer
     #: fills it in; equals ``agreement`` when no control is available.
     corrected_agreement: Optional[float] = None
+    #: Wilson 95% CI on the raw agreement proportion over the k trials.
+    ci: Optional[ConfidenceInterval] = None
+    #: Number of k-run trials this result is based on.
+    n_trials: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["perturbation"] = self.perturbation.to_dict()
+        if self.ci is not None:
+            d["ci"] = self.ci.to_dict()
         return d
 
     @property
@@ -165,6 +187,14 @@ class StepScore:
     control_change_rate: float = 0.0
     #: Whether ``faithfulness`` was control-corrected (a paraphrase was available).
     corrected: bool = False
+    #: How load-bearing the step is: the corrected agreement of its deletion (or
+    #: the max over its perturbations if deletion was not run). A low value means
+    #: the step is peripheral — corrupting it does not move the answer.
+    criticality: float = 0.0
+    #: Whether the step is load-bearing (``criticality >= criticality_threshold``).
+    #: Only critical steps drive the trace-level verdict, so a genuinely peripheral
+    #: step is not mistaken for causal bypass.
+    is_critical: bool = True
     #: Present only for the LLM-judge detector.
     judge_flags: List[str] = field(default_factory=list)
     judge_rationale: str = ""
@@ -219,6 +249,11 @@ class FaithfulnessReport:
     #: Names of the FINE-CoT unfaithfulness principles that fired (judge or
     #: heuristics derived from the intervention results).
     unfaithfulness_flags: List[str] = field(default_factory=list)
+    #: Wilson 95% CI on the raw agreement rate over critical-step interventions.
+    faithfulness_ci: Optional[ConfidenceInterval] = None
+    #: How many steps were load-bearing vs peripheral (intervention detector).
+    n_critical_steps: int = 0
+    n_peripheral_steps: int = 0
     #: Complementary Lanham early-answering analysis (intervention detector only).
     early_answering: Optional[EarlyAnsweringResult] = None
     config: Dict[str, Any] = field(default_factory=dict)
@@ -229,6 +264,8 @@ class FaithfulnessReport:
         d["detector"] = self.detector.value
         d["quadrant"] = self.quadrant.value
         d["step_scores"] = [s.to_dict() for s in self.step_scores]
+        if self.faithfulness_ci is not None:
+            d["faithfulness_ci"] = self.faithfulness_ci.to_dict()
         if self.early_answering is not None:
             d["early_answering"] = self.early_answering.to_dict()
         return d

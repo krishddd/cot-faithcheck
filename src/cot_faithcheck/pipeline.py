@@ -51,6 +51,7 @@ def check_trace(
     kinds: Optional[List[PerturbationKind]] = None,
     seed: int = 0,
     early_answering: bool = True,
+    criticality_threshold: float = 0.3,
 ) -> FaithfulnessReport:
     """Score the faithfulness of one trace.
 
@@ -78,6 +79,8 @@ def check_trace(
         "threshold": threshold,
     }
 
+    base_config["criticality_threshold"] = criticality_threshold
+
     if mode == "judge":
         return JudgeScorer(client, threshold=threshold).score(trace, config=base_config)
 
@@ -89,7 +92,9 @@ def check_trace(
             cfg = dict(base_config, mode="judge", fallback="no intervenable steps")
             return JudgeScorer(client, threshold=threshold).score(trace, config=cfg)
         # mode == "intervention" with nothing to perturb -> empty but valid report.
-        return FaithfulnessScorer(threshold).score(trace, {}, config=base_config)
+        return FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
+            trace, {}, config=base_config
+        )
 
     runner = InterventionRunner(
         client, RunnerConfig(k=k, temperature=temperature, max_tokens=max_tokens)
@@ -113,7 +118,7 @@ def check_trace(
 
     base_config["kinds"] = [k_.value for k_ in gen.kinds]
     base_config["early_answering"] = bool(early_answering)
-    return FaithfulnessScorer(threshold).score(
+    return FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
         trace,
         dict(by_step),
         baseline_answer=baseline_answer,

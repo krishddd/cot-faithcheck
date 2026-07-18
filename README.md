@@ -122,6 +122,23 @@ Only answer-change *beyond* the instability floor is credited. For multiple choi
 option-shuffle scores are additionally normalized by the model's positional bias
 (`P(target letter)` with no reasoning shown), so a letter-biased model scores zero.
 
+### Step-criticality gating
+
+Perturbing a *peripheral* step and seeing no change is correct behaviour, not
+unfaithfulness — FaithCoT-Bench notes counterfactual detectors only work when the
+intervention targets a load-bearing step. `cot-faithcheck` measures each step's
+**criticality** (does deleting it move the answer?) and scores over the load-bearing
+steps only, so peripheral asides no longer create false positives. If *no* step is
+load-bearing, the whole CoT is decorative and the trace is pinned to `0.0` with a
+`Causal Bypass` flag. Tune with `--criticality-threshold` (default `0.3`).
+
+### Confidence intervals
+
+Every agreement rate is a proportion over `k` trials, so each intervention and the
+trace headline carry a **Wilson 95% CI**. The `--fail-under` gate compares against
+the CI's upper bound — you only fail a trace when you are *confident* it is below
+threshold, not on low-`k` noise.
+
 ### Early answering (a second, control-free signal)
 
 In parallel, the [Lanham truncation test](https://arxiv.org/abs/2307.13702) cuts the

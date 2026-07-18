@@ -41,6 +41,7 @@ from .pipeline import check_file, check_trace, check_traces
 from .report import batch_json, batch_markdown, to_json, to_markdown
 from .scorer import FaithfulnessScorer, score_step
 from .types import (
+    ConfidenceInterval,
     Detector,
     EarlyAnsweringResult,
     FaithfulnessReport,
@@ -53,7 +54,7 @@ from .types import (
     Trace,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     # high-level API
@@ -86,6 +87,7 @@ __all__ = [
     "StepScore",
     "FaithfulnessReport",
     "EarlyAnsweringResult",
+    "ConfidenceInterval",
     "Detector",
     "Quadrant",
     # errors

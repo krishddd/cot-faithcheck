@@ -35,12 +35,20 @@ def to_markdown(report: FaithfulnessReport) -> str:
     lines.append(f"# CoT Faithfulness Report — `{report.trace_id}`")
     lines.append("")
     lines.append(f"**Verdict:** {verdict}  ")
+    ci_txt = ""
+    if report.faithfulness_ci is not None:
+        ci_txt = f" — 95% CI [{report.faithfulness_ci.low:.2f}, {report.faithfulness_ci.high:.2f}]"
     lines.append(
         f"**Faithfulness (agreement rate):** {report.faithfulness:.3f} "
-        f"`{_bar(report.faithfulness)}` (threshold {report.threshold:.2f})  "
+        f"`{_bar(report.faithfulness)}` (threshold {report.threshold:.2f}){ci_txt}  "
     )
     if report.detector == Detector.INTERVENTION:
         lines.append(f"**Soft faithfulness (prob. mass shift):** {report.soft_faithfulness:.3f}  ")
+        if report.n_critical_steps or report.n_peripheral_steps:
+            lines.append(
+                f"**Load-bearing steps:** {report.n_critical_steps} critical, "
+                f"{report.n_peripheral_steps} peripheral (score is over critical steps)  "
+            )
     if report.early_answering is not None and report.early_answering.convergence:
         lines.append(
             f"**Early-answering AOC:** {report.early_answering.aoc:.3f} "
@@ -66,13 +74,22 @@ def to_markdown(report: FaithfulnessReport) -> str:
         lines.append("## Per-step faithfulness")
         lines.append("")
         if report.detector == Detector.INTERVENTION:
-            lines.append("| Step | Faithfulness | Soft | Control Δ | Interventions | Reasoning |")
-            lines.append("|-----:|:------------:|:----:|:---------:|:-------------:|:----------|")
+            lines.append(
+                "| Step | Faithfulness | Soft | Control Δ | Load-bearing | Interventions | Reasoning |"
+            )
+            lines.append(
+                "|-----:|:------------:|:----:|:---------:|:------------:|:-------------:|:----------|"
+            )
             for s in report.step_scores:
                 ctrl = f"{s.control_change_rate:.2f}" if s.corrected else "—"
+                crit = (
+                    f"yes ({s.criticality:.2f})"
+                    if s.is_critical
+                    else f"peripheral ({s.criticality:.2f})"
+                )
                 lines.append(
                     f"| {s.step_index} | {s.faithfulness:.2f} `{_bar(s.faithfulness)}` "
-                    f"| {s.soft_faithfulness:.2f} | {ctrl} | {len(s.interventions)} "
+                    f"| {s.soft_faithfulness:.2f} | {ctrl} | {crit} | {len(s.interventions)} "
                     f"| {_truncate(s.step_text)} |"
                 )
         else:
@@ -95,10 +112,10 @@ def to_markdown(report: FaithfulnessReport) -> str:
             lines.append(f"### Step {s.step_index}: {_truncate(s.step_text, 100)}")
             lines.append("")
             lines.append(
-                "| Perturbation | Predicts change | Changed | Agreement (raw→corrected) | Notes |"
+                "| Perturbation | Predicts change | Changed | Agreement (raw→corrected) | 95% CI | Notes |"
             )
             lines.append(
-                "|:-------------|:---------------:|:-------:|:-------------------------:|:------|"
+                "|:-------------|:---------------:|:-------:|:-------------------------:|:------:|:------|"
             )
             for r in s.interventions:
                 p = r.perturbation
@@ -110,9 +127,10 @@ def to_markdown(report: FaithfulnessReport) -> str:
                     agr = f"{r.agreement:.2f} → {r.effective_agreement:.2f}"
                 else:
                     agr = "control"
+                ci = f"[{r.ci.low:.2f}, {r.ci.high:.2f}]" if r.ci is not None else "—"
                 lines.append(
                     f"| {p.kind.value} | {p.predicts_change} | {r.changed_fraction:.2f} "
-                    f"| {agr} | {'; '.join(notes)} |"
+                    f"| {agr} | {ci} | {'; '.join(notes)} |"
                 )
             lines.append("")
 

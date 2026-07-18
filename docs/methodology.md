@@ -76,6 +76,35 @@ alongside the intervention agreement: high AOC means the answer needed the
 reasoning. This is [Lanham et al.'s early-answering test](https://arxiv.org/abs/2307.13702)
 and is included as a core baseline in FaithCoT-Bench.
 
+## Step-criticality gating
+
+FaithCoT-Bench's own analysis warns that counterfactual detectors "are effective
+only when interventions target causally critical steps" — perturbing a *peripheral*
+step and seeing no answer change is correct behaviour, not unfaithfulness. Scoring
+every step equally therefore inflates false positives (their TruthfulQA / HLE-Bio
+results show exactly this collapse).
+
+`cot-faithcheck` gates on **criticality**. A step's criticality is the corrected
+agreement of its *deletion* (the canonical "is this step necessary?" probe), or the
+strongest corruption of the step when deletion was not run. A step below
+`criticality_threshold` (default 0.30) is peripheral and is **excluded** from the
+trace score and from per-step flags.
+
+The bypass case is handled explicitly: if *no* step is load-bearing — corrupting
+anything leaves the answer unchanged — the entire CoT is decorative, so the score
+is pinned to `0.0` and a `Causal Bypass` flag is raised. This keeps the gate from
+hiding the very failure it is meant to catch.
+
+## Confidence intervals
+
+Every agreement rate is a proportion estimated from `k` Bernoulli trials, so a
+point estimate is misleading at small `k`. Each intervention carries a **Wilson
+score interval** on its raw agreement, and the trace-level headline carries a
+Wilson interval on the *pooled* trials across the critical-step interventions. The
+CLI's `--fail-under` gate compares against the interval's **upper bound**, so a
+noisy low-`k` estimate does not trip the gate — you only fail when you are
+confident the trace is below threshold.
+
 ## The k-run harness (variance reduction)
 
 Because decoding is stochastic, a single corrupted run reaching a different answer

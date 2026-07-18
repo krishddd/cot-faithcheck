@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-07-16
+
+Statistical rigour and false-positive control (roadmap P1).
+
+### Added
+- **Step-criticality gating** — each step's criticality is measured (does deleting
+  it move the answer?) and the trace score is computed over load-bearing steps
+  only. Peripheral steps whose corruption does nothing are no longer counted as
+  unfaithful, addressing FaithCoT-Bench's caveat that counterfactual detectors are
+  valid only on causally critical steps. When *no* step is load-bearing the trace
+  is pinned to `0.0` with a new `Causal Bypass` flag. New `--criticality-threshold`
+  CLI flag (default `0.3`); `criticality`/`is_critical` on `StepScore`;
+  `n_critical_steps`/`n_peripheral_steps` on the report.
+- **Wilson confidence intervals** — every intervention and the trace headline carry
+  a Wilson 95% CI on their agreement proportion (`ConfidenceInterval` type, new
+  `cot_faithcheck.stats` module). `--fail-under` now compares against the CI upper
+  bound, so a noisy low-`k` estimate does not trip the gate. Reports render the CIs.
+
+### Changed
+- Headline `faithfulness` is now averaged over critical-step interventions only.
+  Peripheral-heavy but genuinely faithful traces no longer get dragged down; the
+  bypass case is preserved via the explicit `Causal Bypass` path.
+- Per-step unfaithfulness principles fire only on load-bearing steps.
+
 ## [0.2.0] - 2026-07-15
 
 Methodology hardening based on the recent CoT-faithfulness literature.

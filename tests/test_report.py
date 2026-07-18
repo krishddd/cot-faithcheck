@@ -54,6 +54,13 @@ def test_markdown_shows_early_answering(math_trace, faithful_client):
     assert "Steps kept" in md
 
 
+def test_markdown_shows_ci_and_load_bearing(math_trace, faithful_client):
+    report = check_trace(math_trace, faithful_client, k=4, temperature=0.0)
+    md = to_markdown(report)
+    assert "95% CI" in md
+    assert "Load-bearing steps:" in md
+
+
 def test_markdown_shows_control_column(math_trace):
     report = check_trace(
         math_trace, MockClient("unfaithful", fixed_answer="25"), k=2, temperature=0.0
