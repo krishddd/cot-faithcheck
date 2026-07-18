@@ -18,6 +18,7 @@ intervention, so any shift is causally attributable to that step.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass
 from statistics import mean
@@ -25,7 +26,7 @@ from typing import List, Optional
 
 from .answer import answers_equivalent, extract_answer
 from .clients.base import LLMClient
-from .prompts import build_continuation_messages
+from .prompts import build_continuation_messages, build_prefill_messages
 from .stats import wilson_interval
 from .types import (
     ConfidenceInterval,
@@ -52,10 +53,21 @@ class RunnerConfig:
     k: int = 5
     temperature: float = 0.7
     max_tokens: int = 512
+    #: How the model is conditioned on the corrupted prefix. ``"prefill"`` uses a
+    #: trailing assistant turn (true forced-decoding) when the client supports it;
+    #: ``"template"`` re-presents the steps in a user prompt; ``"auto"`` prefers
+    #: prefill when available.
+    conditioning: str = "auto"
+    #: Compute the soft metric from answer-token log-probabilities (one call each
+    #: for before/after) when the client supports it, instead of the Monte-Carlo
+    #: estimate over the k samples. Falls back to Monte-Carlo when unsupported.
+    use_logprobs: bool = False
 
     def __post_init__(self) -> None:
         if self.k < 1:
             raise ValueError("k must be >= 1")
+        if self.conditioning not in ("auto", "prefill", "template"):
+            raise ValueError("conditioning must be 'auto', 'prefill' or 'template'")
 
 
 def _majority(answers: List[str]) -> str:
@@ -91,9 +103,28 @@ class InterventionRunner:
         self.client = client
         self.config = config or RunnerConfig()
         self._baseline_cache = {}
+        # Resolve the conditioning mode once against the client's capability.
+        want_prefill = self.config.conditioning in ("auto", "prefill")
+        self.use_prefill = bool(want_prefill and getattr(client, "supports_prefill", False))
+        self.conditioning_mode = "prefill" if self.use_prefill else "template"
+        # Resolve the soft-metric source likewise.
+        self.use_logprobs = bool(
+            self.config.use_logprobs and getattr(client, "supports_logprobs", False)
+        )
+        self.soft_metric_mode = "logprob" if self.use_logprobs else "montecarlo"
+
+    def _messages_for(self, question, prefix_steps, options):
+        """Build the continuation request in the resolved conditioning mode.
+
+        Prefill needs a non-empty assistant turn, so an empty prefix (a step-0
+        deletion, or ``kept=0`` in early answering) falls back to the template form.
+        """
+        if self.use_prefill and prefix_steps:
+            return build_prefill_messages(question, prefix_steps, options=options)
+        return build_continuation_messages(question, prefix_steps, options=options)
 
     def _sample(self, question, prefix_steps, options) -> List[str]:
-        messages = build_continuation_messages(question, prefix_steps, options=options)
+        messages = self._messages_for(question, prefix_steps, options)
         raw = self.client.generate(
             messages,
             temperature=self.config.temperature,
@@ -150,6 +181,16 @@ class InterventionRunner:
         prob_before = _prob_of(baseline_answers, baseline_answer)
         prob_after = _prob_of(perturbed_answers, baseline_answer)
 
+        # Precise single-call soft metric from answer-token log-probabilities, when
+        # the client exposes them; otherwise keep the Monte-Carlo estimate above.
+        if self.use_logprobs:
+            lp_before = self._answer_prob(
+                trace, trace.steps[: perturbation.step_index + 1], trace.options, baseline_answer
+            )
+            lp_after = self._answer_prob(trace, prefix, options, baseline_answer)
+            if lp_before is not None and lp_after is not None:
+                prob_before, prob_after = lp_before, lp_after
+
         # For an option shuffle, normalize the "reached the target letter" rate by
         # the model's raw positional bias — how often it picks that letter with the
         # options shuffled but *no* reasoning shown (the disguised-accuracy fix for
@@ -184,6 +225,18 @@ class InterventionRunner:
             return 0.0
         probe = self._sample(trace.question, [], options)
         return _prob_of(probe, perturbation.expected_answer)
+
+    def _answer_prob(self, trace: Trace, prefix_steps, options, answer: str):
+        """P(``answer``) given a (possibly corrupted) prefix, via client log-probs.
+
+        Returns a probability in ``[0, 1]`` or ``None`` if the client cannot supply
+        the log-probability (caller then keeps the Monte-Carlo estimate).
+        """
+        messages = self._messages_for(trace.question, prefix_steps, options)
+        lp = self.client.logprob_of(messages, answer)
+        if lp is None:
+            return None
+        return math.exp(lp)
 
     def early_answering(
         self, trace: Trace, *, final_answer: Optional[str] = None

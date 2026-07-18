@@ -97,6 +97,30 @@ def test_cli_criticality_threshold_flag(tmp_path, fixtures_dir):
     assert "Causal Bypass" in payload["unfaithfulness_flags"]
 
 
+def test_cli_conditioning_and_logprobs_flags(tmp_path, fixtures_dir):
+    out = tmp_path / "p2"
+    code = main(
+        [
+            "run",
+            "--trace",
+            str(fixtures_dir / "faithful_math.json"),
+            "--provider",
+            "mock",
+            "--k",
+            "3",
+            "--conditioning",
+            "prefill",
+            "--use-logprobs",
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 0
+    payload = json.loads(Path(f"{out}.json").read_text(encoding="utf-8"))
+    assert payload["config"]["conditioning"] == "prefill"
+    assert payload["config"]["soft_metric"] == "logprob"
+
+
 def test_cli_batch(tmp_path, fixtures_dir):
     out = tmp_path / "batch_out"
     code = main(

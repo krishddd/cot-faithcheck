@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 Message = Dict[str, str]  # {"role": "system"|"user"|"assistant", "content": str}
 
@@ -43,10 +43,29 @@ class LLMClient(abc.ABC):
     provider: str = "llm"
     #: The model identifier passed to the provider.
     model: str = ""
+    #: Whether the provider can *continue* a trailing assistant message (true
+    #: forced-decoding of a corrupted reasoning prefix) rather than only answering
+    #: a fresh user turn. Anthropic supports this natively; OpenAI-compatible
+    #: servers such as vLLM support it via ``continue_final_message``.
+    supports_prefill: bool = False
+    #: Whether the provider can return the log-probability of a specific answer
+    #: token, enabling the single-call logprob soft metric.
+    supports_logprobs: bool = False
 
     @abc.abstractmethod
     def _generate_one(self, messages: List[Message], config: GenerationConfig) -> str:
         """Return a single completion string for ``messages``."""
+
+    def logprob_of(
+        self, messages: List[Message], target: str, *, config: Optional[GenerationConfig] = None
+    ) -> Optional[float]:
+        """Natural-log P(``target``) as the next answer given ``messages``.
+
+        Returns ``None`` when the provider cannot supply token log-probabilities;
+        callers then fall back to the Monte-Carlo soft metric. Subclasses that set
+        :attr:`supports_logprobs` override this.
+        """
+        return None
 
     def _supports_native_n(self) -> bool:
         """Whether the provider can return *n* samples in one request."""

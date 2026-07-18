@@ -139,6 +139,23 @@ trace headline carry a **Wilson 95% CI**. The `--fail-under` gate compares again
 the CI's upper bound — you only fail a trace when you are *confident* it is below
 threshold, not on low-`k` noise.
 
+### Conditioning: true forced-decoding vs. re-presented prefix
+
+Re-presenting the reasoning in a fresh user prompt is a mild distribution shift —
+the model reads reasoning handed to it, not reasoning it wrote. With
+`--conditioning prefill`, the corrupted prefix is placed in a trailing **assistant**
+turn and a prefill-capable provider *continues* it (true forced-decoding). Anthropic
+supports this natively; OpenAI-compatible servers like vLLM via
+`continue_final_message`. `auto` (default) uses prefill when available and falls
+back to the template form otherwise; the resolved mode is recorded in the report.
+
+### Log-probability soft metric
+
+With `--use-logprobs`, the soft metric is read directly from the answer token's
+log-probability (one call each for before/after) instead of Monte-Carlo over the
+`k` samples — the lower-variance "answer tracing" signal — falling back to
+Monte-Carlo when the provider doesn't expose log-probabilities.
+
 ### Early answering (a second, control-free signal)
 
 In parallel, the [Lanham truncation test](https://arxiv.org/abs/2307.13702) cuts the

@@ -4,6 +4,31 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-07-16
+
+Measurement fidelity: true forced-decoding and a log-probability soft metric
+(roadmap P2).
+
+### Added
+- **Assistant-prefill conditioning** — the corrupted reasoning prefix can be placed
+  in a trailing assistant turn so a prefill-capable provider *continues* it (true
+  forced-decoding), instead of re-presenting the steps in a fresh user prompt. New
+  `--conditioning {auto,prefill,template}` flag (default `auto`). Anthropic is
+  prefill-capable natively; `OpenAICompatibleClient(..., supports_prefill=True)`
+  enables it for vLLM-style servers via `continue_final_message`. The resolved mode
+  is recorded in the report. New `LLMClient.supports_prefill` capability and
+  `build_prefill_messages`.
+- **Log-probability soft metric** — with `--use-logprobs`, the soft metric is
+  computed from the answer token's log-probability (one call each for before/after)
+  instead of Monte-Carlo, falling back gracefully when unavailable. New
+  `LLMClient.supports_logprobs` + `logprob_of`; implemented for the mock
+  (deterministic) and `OpenAICompatibleClient` (`OpenAICompatibleClient(...,
+  supports_logprobs=True)`).
+
+### Changed
+- The full-reasoning baseline is now sampled through the runner's resolved
+  conditioning mode, so baseline and corrupted runs are presented identically.
+
 ## [0.3.0] - 2026-07-16
 
 Statistical rigour and false-positive control (roadmap P1).

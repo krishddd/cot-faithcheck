@@ -30,6 +30,8 @@ class OpenAICompatibleClient(LLMClient):
         timeout: float = 60.0,
         organization: Optional[str] = None,
         native_n: bool = True,
+        supports_prefill: bool = False,
+        supports_logprobs: bool = False,
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -37,6 +39,11 @@ class OpenAICompatibleClient(LLMClient):
         self.timeout = timeout
         self.organization = organization
         self._native_n = native_n
+        # The hosted OpenAI API does not continue a trailing assistant message, but
+        # many OpenAI-compatible servers (vLLM, SGLang, ...) do via
+        # ``continue_final_message``. Enable per-endpoint.
+        self.supports_prefill = supports_prefill
+        self.supports_logprobs = supports_logprobs
 
     def _headers(self) -> dict:
         headers = {}
@@ -57,6 +64,11 @@ class OpenAICompatibleClient(LLMClient):
         }
         if config.stop:
             payload["stop"] = list(config.stop)
+        # Continue a trailing assistant turn (true prefill) when the endpoint
+        # supports it, instead of starting a fresh assistant message.
+        if self.supports_prefill and messages and messages[-1].get("role") == "assistant":
+            payload["continue_final_message"] = True
+            payload["add_generation_prompt"] = False
         return payload
 
     def _request(self, messages: List[Message], config: GenerationConfig, n: int) -> List[str]:
@@ -83,6 +95,58 @@ class OpenAICompatibleClient(LLMClient):
 
     def _generate_one(self, messages: List[Message], config: GenerationConfig) -> str:
         return self._request(messages, config, 1)[0]
+
+    def logprob_of(self, messages, target, *, config=None):
+        """Best-effort P(``target``) from the first answer token's log-probability.
+
+        Follows the standard answer-tracing recipe: constrain the model to emit only
+        the answer, request ``logprobs``/``top_logprobs``, and read the probability
+        the first generated token position assigns to the target's leading token
+        (matching the bare and leading-space variants). Works well for
+        multiple-choice letters and short answers. Returns ``None`` when the
+        endpoint does not return token log-probabilities.
+        """
+        if not self.supports_logprobs:
+            return None
+        msgs = list(messages) + [
+            {"role": "user", "content": "Respond with ONLY the final answer, nothing else."}
+        ]
+        payload = {
+            "model": self.model,
+            "messages": msgs,
+            "temperature": 0.0,
+            "max_tokens": 6,
+            "logprobs": True,
+            "top_logprobs": 20,
+            "n": 1,
+        }
+        try:
+            resp = post_json(
+                f"{self.base_url}/chat/completions",
+                payload,
+                headers=self._headers(),
+                timeout=self.timeout,
+            )
+        except ClientError:
+            return None
+        content = ((resp.get("choices") or [{}])[0].get("logprobs") or {}).get("content") or []
+        if not content:
+            return None
+        first = content[0]
+        top = first.get("top_logprobs") or [
+            {"token": first.get("token"), "logprob": first.get("logprob")}
+        ]
+        want = target.strip().lower()[:1]
+        if not want:
+            return None
+        best = None
+        for entry in top:
+            tok = str(entry.get("token", "")).strip().lower()
+            if tok[:1] == want:
+                lp = entry.get("logprob")
+                if lp is not None and (best is None or lp > best):
+                    best = lp
+        return best
 
     @classmethod
     def from_env(cls) -> "OpenAICompatibleClient":

@@ -43,7 +43,18 @@ def to_markdown(report: FaithfulnessReport) -> str:
         f"`{_bar(report.faithfulness)}` (threshold {report.threshold:.2f}){ci_txt}  "
     )
     if report.detector == Detector.INTERVENTION:
-        lines.append(f"**Soft faithfulness (prob. mass shift):** {report.soft_faithfulness:.3f}  ")
+        soft_src = report.config.get("soft_metric", "montecarlo")
+        lines.append(
+            f"**Soft faithfulness (prob. mass shift):** {report.soft_faithfulness:.3f} "
+            f"({soft_src})  "
+        )
+        cond = report.config.get("conditioning")
+        if cond:
+            lines.append(
+                f"**Conditioning:** {cond} "
+                + ("(true forced-decoding)" if cond == "prefill" else "(re-presented prefix)")
+                + "  "
+            )
         if report.n_critical_steps or report.n_peripheral_steps:
             lines.append(
                 f"**Load-bearing steps:** {report.n_critical_steps} critical, "

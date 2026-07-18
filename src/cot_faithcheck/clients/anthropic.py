@@ -21,6 +21,8 @@ class AnthropicClient(LLMClient):
     """Client for Anthropic's Messages API."""
 
     provider = "anthropic"
+    # Anthropic continues a trailing assistant message natively (prefill).
+    supports_prefill = True
 
     def __init__(
         self,

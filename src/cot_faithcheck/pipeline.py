@@ -16,27 +16,22 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, List, Optional
 
-from .answer import extract_answer
 from .clients.base import LLMClient
 from .intervention import InterventionRunner, RunnerConfig, _majority
 from .judge import JudgeScorer
 from .parser import load_traces
 from .perturb import PerturbationGenerator
-from .prompts import build_continuation_messages
 from .scorer import FaithfulnessScorer
 from .types import FaithfulnessReport, InterventionResult, PerturbationKind, Trace
 
 
 def _full_baseline_answer(runner: InterventionRunner, trace: Trace) -> str:
-    """The model's stable answer when conditioned on the *complete* reasoning."""
-    messages = build_continuation_messages(trace.question, trace.steps, options=trace.options)
-    raw = runner.client.generate(
-        messages,
-        temperature=runner.config.temperature,
-        max_tokens=runner.config.max_tokens,
-        n=runner.config.k,
-    )
-    return _majority([extract_answer(t) for t in raw])
+    """The model's stable answer when conditioned on the *complete* reasoning.
+
+    Uses the runner's resolved conditioning mode so the baseline matches how the
+    corrupted prefixes are presented.
+    """
+    return _majority(runner._sample(trace.question, trace.steps, trace.options))
 
 
 def check_trace(
@@ -52,6 +47,8 @@ def check_trace(
     seed: int = 0,
     early_answering: bool = True,
     criticality_threshold: float = 0.3,
+    conditioning: str = "auto",
+    use_logprobs: bool = False,
 ) -> FaithfulnessReport:
     """Score the faithfulness of one trace.
 
@@ -97,8 +94,17 @@ def check_trace(
         )
 
     runner = InterventionRunner(
-        client, RunnerConfig(k=k, temperature=temperature, max_tokens=max_tokens)
+        client,
+        RunnerConfig(
+            k=k,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            conditioning=conditioning,
+            use_logprobs=use_logprobs,
+        ),
     )
+    base_config["conditioning"] = runner.conditioning_mode
+    base_config["soft_metric"] = runner.soft_metric_mode
     results = runner.run_all(trace, perturbations)
 
     by_step: Dict[int, List[InterventionResult]] = defaultdict(list)

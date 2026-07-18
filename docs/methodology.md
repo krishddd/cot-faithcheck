@@ -105,6 +105,35 @@ CLI's `--fail-under` gate compares against the interval's **upper bound**, so a
 noisy low-`k` estimate does not trip the gate — you only fail when you are
 confident the trace is below threshold.
 
+## Conditioning: template vs. prefill
+
+To measure whether *this* CoT drove *this* answer, the model must decode the answer
+from the (possibly corrupted) reasoning prefix. Two ways to present it:
+
+* **template** (default fallback) — the steps are re-presented in a fresh user turn
+  ("Reasoning steps: …") and the model answers. Portable to any provider, but it is
+  a mild distribution shift: the model reads reasoning *handed to it* rather than
+  reasoning *it produced*.
+* **prefill** — the reasoning prefix is placed in a trailing **assistant** turn and
+  the provider *continues* it, so the model decodes the remainder as if it had
+  written the prefix itself. This is true forced-decoding and the more faithful
+  measurement. It requires a prefill-capable provider (Anthropic natively;
+  OpenAI-compatible servers such as vLLM via `continue_final_message`).
+
+`conditioning="auto"` uses prefill when the client supports it and falls back to
+the template form otherwise (and for an empty prefix, e.g. a step-0 deletion). The
+resolved mode is recorded in the report.
+
+## Soft metric: Monte-Carlo vs. log-probabilities
+
+The soft metric tracks how much probability mass drains from the baseline answer
+under the intervention. By default it is estimated by Monte-Carlo over the `k`
+samples. When the provider exposes token log-probabilities (`use_logprobs=True`),
+the soft metric is computed directly from the answer token's log-probability in a
+single call each for before/after — the logit-based "answer tracing" signal from
+FaithCoT-Bench, with lower variance and cost. It falls back to Monte-Carlo when
+log-probabilities are unavailable.
+
 ## The k-run harness (variance reduction)
 
 Because decoding is stochastic, a single corrupted run reaching a different answer

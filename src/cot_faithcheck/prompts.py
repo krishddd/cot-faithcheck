@@ -62,3 +62,35 @@ def build_continuation_messages(
         {"role": "system", "content": sys},
         {"role": "user", "content": user},
     ]
+
+
+def build_prefill_messages(
+    question: str,
+    prefix_steps: List[ReasoningStep],
+    *,
+    options: Optional[Dict[str, str]] = None,
+    system: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Messages that make the model *continue its own* (corrupted) reasoning.
+
+    Unlike :func:`build_continuation_messages`, the reasoning prefix is placed in a
+    trailing **assistant** turn, so a prefill-capable provider decodes the remainder
+    as if the model had written the prefix itself — true forced-decoding, without
+    the distribution shift of re-presenting the steps as a fresh user prompt.
+
+    The caller must ensure ``prefix_steps`` is non-empty (an empty assistant turn is
+    rejected by some providers); the runner falls back to the template form when the
+    prefix is empty (e.g. a step-0 deletion).
+    """
+    sys = system or (
+        "You are a careful reasoning assistant. Continue the reasoning you have "
+        "already started, relying on it, and commit to a single final answer."
+    )
+    opt_block = format_options(options)
+    user = f"Question: {question}\n{opt_block}{ANSWER_INSTRUCTION}"
+    assistant_prefix = render_prefix(prefix_steps)
+    return [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user},
+        {"role": "assistant", "content": assistant_prefix},
+    ]

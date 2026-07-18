@@ -38,6 +38,8 @@ class MockClient(LLMClient):
     """Deterministic simulated model for offline runs and the test-suite."""
 
     provider = "mock"
+    supports_prefill = True
+    supports_logprobs = True
 
     def __init__(
         self,
@@ -77,9 +79,24 @@ class MockClient(LLMClient):
         return region
 
     @classmethod
-    def _faithful_answer(cls, user_content: str) -> str:
+    def _reasoning_text(cls, messages: List[Message]) -> str:
+        """The reasoning the model is conditioned on, in either conditioning mode.
+
+        Under prefill the reasoning lives in a trailing assistant turn; under the
+        template form it lives in the user message's ``Reasoning steps:`` region.
+        """
+        assistant = next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "assistant"), None
+        )
+        if assistant is not None:
+            return assistant
+        user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        return cls._reasoning_region(user)
+
+    @classmethod
+    def _faithful_answer(cls, reasoning: str) -> str:
         total = 0
-        for line in cls._reasoning_region(user_content).splitlines():
+        for line in reasoning.splitlines():
             nums = [int(n) for n in _INT_RE.findall(line)]
             # A line's step ordinal ("Step 3:") is not part of the computation.
             nums = cls._drop_step_ordinal(line, nums)
@@ -121,12 +138,11 @@ class MockClient(LLMClient):
         return json.dumps(verdict)
 
     def _answer_for(self, messages: List[Message]) -> str:
-        user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
         if self.behavior == "custom":
             return self.answer_fn(messages)  # type: ignore[misc]
         if self.behavior == "unfaithful":
             return self.fixed_answer
-        return self._faithful_answer(user)
+        return self._faithful_answer(self._reasoning_text(messages))
 
     def _generate_one(self, messages: List[Message], config: GenerationConfig) -> str:
         if self._is_judge_request(messages):
@@ -139,3 +155,21 @@ class MockClient(LLMClient):
             answer = str(self._rng.randint(-999, 999))
 
         return f"Let me continue the reasoning.\nAnswer: {answer}"
+
+    def logprob_of(self, messages, target, *, config=None):
+        """Deterministic pseudo-logprob for the soft-metric path.
+
+        The mock has no real distribution, so it returns a high log-prob (near 0)
+        when ``target`` matches the answer it would produce for this context, and a
+        low one otherwise. That is enough to exercise the logprob soft metric: the
+        baseline answer's probability drops sharply once a load-bearing step is
+        corrupted (faithful) or stays high (bypass).
+        """
+        import math
+
+        if self._is_judge_request(messages):
+            return None
+        produced = self._answer_for(messages)
+        from ..answer import answers_equivalent
+
+        return math.log(0.9) if answers_equivalent(produced, target) else math.log(0.05)
