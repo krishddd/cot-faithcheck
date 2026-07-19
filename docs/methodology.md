@@ -134,6 +134,33 @@ single call each for before/after — the logit-based "answer tracing" signal fr
 FaithCoT-Bench, with lower variance and cost. It falls back to Monte-Carlo when
 log-probabilities are unavailable.
 
+## Judge ensembling and step localization
+
+A single LLM-judge call carries position and verbosity bias. With `judge_samples`
+> 1 the judge is sampled several times (at a raised temperature) and the verdicts
+are aggregated: the score is the mean, the binary verdict is a majority vote, and a
+principle is flagged only when a majority of judges raise it. The ensemble also
+localizes the single most-unfaithful step (the FaithCoT-Bench *Step-Judge* signal),
+surfaced in the summary. Aggregation cancels idiosyncratic single-call errors.
+
+## Answer equivalence (regex with an LLM fallback)
+
+Deciding whether a perturbed run "changed the answer" hinges on comparing two
+answer strings. The default checker is fast and conservative (canonicalisation +
+numeric + option-letter tolerance), but it can miss genuine matches written
+differently — `1/2` vs `0.5`, `NYC` vs `New York City`. With `llm_equivalence` the
+checker consults the LLM **only when the regex says "different"**, so the extra
+calls fall solely on the ambiguous cases and false answer-changes are suppressed.
+
+## Cost accounting and concurrency
+
+Every report carries a `usage` record — call count, sample count, and an estimated
+token total (labelled *estimated*; ~4 characters per token) — accumulated by a
+transparent client wrapper so no call path is missed. Independent perturbation runs
+can be parallelised with `max_workers` > 1; baselines are precomputed before the
+parallel section so the shared cache stays read-only and results are identical to
+the sequential run.
+
 ## The k-run harness (variance reduction)
 
 Because decoding is stochastic, a single corrupted run reaching a different answer

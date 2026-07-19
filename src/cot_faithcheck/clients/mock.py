@@ -145,6 +145,11 @@ class MockClient(LLMClient):
         return self._faithful_answer(self._reasoning_text(messages))
 
     def _generate_one(self, messages: List[Message], config: GenerationConfig) -> str:
+        # Custom behaviour takes full control of the reply (including judge and
+        # equivalence requests), so tests can script exact outputs.
+        if self.behavior == "custom":
+            return self.answer_fn(messages)  # type: ignore[misc]
+
         if self._is_judge_request(messages):
             return self._judge_reply()
 

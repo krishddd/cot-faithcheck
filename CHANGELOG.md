@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-07-16
+
+Robustness and scale (roadmap P3).
+
+### Added
+- **Judge ensembling + step localization** — `--judge-samples N` samples the LLM
+  judge N times and aggregates (mean score, majority verdict, majority-vote flags,
+  mean per-step) to cancel single-call position/verbosity bias, and surfaces the
+  most-unfaithful step (Step-Judge signal). `JudgeScorer(..., samples=N)`.
+- **LLM answer-equivalence fallback** — `--llm-equivalence` consults the LLM to
+  settle equivalence only when the regex checker rejects it (`1/2` vs `0.5`),
+  cutting false answer-changes. New `cot_faithcheck.equivalence` module; the runner
+  accepts an injected equivalence function.
+- **Cost accounting** — every report carries a `Usage` record (calls, samples,
+  estimated tokens) via a transparent `TrackingClient` wrapper that mirrors the
+  inner client's capabilities.
+- **Opt-in concurrency** — `--max-workers N` parallelises perturbation runs with a
+  thread pool; baselines are precomputed so results are identical to the sequential
+  run (default `max_workers=1`).
+
 ## [0.4.0] - 2026-07-16
 
 Measurement fidelity: true forced-decoding and a log-probability soft metric

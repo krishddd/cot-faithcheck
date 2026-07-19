@@ -19,6 +19,7 @@ from .base import GenerationConfig, LLMClient, Message
 from .mock import MockClient
 from .ollama import OllamaClient
 from .openai_compat import OpenAICompatibleClient
+from .tracking import TrackingClient
 
 __all__ = [
     "LLMClient",
@@ -28,6 +29,7 @@ __all__ = [
     "OpenAICompatibleClient",
     "AnthropicClient",
     "OllamaClient",
+    "TrackingClient",
     "client_from_env",
 ]
 

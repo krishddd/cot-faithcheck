@@ -120,6 +120,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
         criticality_threshold=args.criticality_threshold,
         conditioning=args.conditioning,
         use_logprobs=args.use_logprobs,
+        judge_samples=args.judge_samples,
+        max_workers=args.max_workers,
+        llm_equivalence=args.llm_equivalence,
     )
 
     _print_console_summary(reports)
@@ -172,6 +175,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         criticality_threshold=args.criticality_threshold,
         conditioning=args.conditioning,
         use_logprobs=args.use_logprobs,
+        judge_samples=args.judge_samples,
+        max_workers=args.max_workers,
+        llm_equivalence=args.llm_equivalence,
         # The binary verdict does not use early answering; skip it to save calls.
         early_answering=False,
     )
@@ -232,6 +238,24 @@ def build_parser() -> argparse.ArgumentParser:
             "(one call each) when the provider supports it, instead of Monte-Carlo",
         )
         p.add_argument("--k", type=int, default=5, help="k-run harness size (default: 5)")
+        p.add_argument(
+            "--judge-samples",
+            type=int,
+            default=1,
+            help="ensemble this many LLM-judge samples via majority vote (default: 1)",
+        )
+        p.add_argument(
+            "--max-workers",
+            type=int,
+            default=1,
+            help="parallel worker threads for perturbation runs (default: 1)",
+        )
+        p.add_argument(
+            "--llm-equivalence",
+            action="store_true",
+            default=False,
+            help="consult the LLM on answer equivalence the regex checker rejects",
+        )
         p.add_argument("--temperature", type=float, default=0.7)
         p.add_argument("--max-tokens", type=int, default=512)
         p.add_argument(

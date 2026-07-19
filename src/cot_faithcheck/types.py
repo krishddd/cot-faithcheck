@@ -51,6 +51,29 @@ class Quadrant(str, Enum):
 
 
 @dataclass
+class Usage:
+    """LLM call accounting for one report (token counts are rough estimates)."""
+
+    n_calls: int = 0
+    n_samples: int = 0
+    est_prompt_tokens: int = 0
+    est_completion_tokens: int = 0
+
+    @property
+    def est_total_tokens(self) -> int:
+        return self.est_prompt_tokens + self.est_completion_tokens
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "n_calls": self.n_calls,
+            "n_samples": self.n_samples,
+            "est_prompt_tokens": self.est_prompt_tokens,
+            "est_completion_tokens": self.est_completion_tokens,
+            "est_total_tokens": self.est_total_tokens,
+        }
+
+
+@dataclass
 class ConfidenceInterval:
     """A two-sided confidence interval on a proportion (Wilson score)."""
 
@@ -256,6 +279,8 @@ class FaithfulnessReport:
     n_peripheral_steps: int = 0
     #: Complementary Lanham early-answering analysis (intervention detector only).
     early_answering: Optional[EarlyAnsweringResult] = None
+    #: LLM call accounting for this report.
+    usage: Optional[Usage] = None
     config: Dict[str, Any] = field(default_factory=dict)
     summary: str = ""
 
@@ -268,6 +293,8 @@ class FaithfulnessReport:
             d["faithfulness_ci"] = self.faithfulness_ci.to_dict()
         if self.early_answering is not None:
             d["early_answering"] = self.early_answering.to_dict()
+        if self.usage is not None:
+            d["usage"] = self.usage.to_dict()
         return d
 
     def weakest_step(self) -> Optional[StepScore]:

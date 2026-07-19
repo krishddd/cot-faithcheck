@@ -52,9 +52,10 @@ from .types import (
     ReasoningStep,
     StepScore,
     Trace,
+    Usage,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     # high-level API
@@ -88,6 +89,7 @@ __all__ = [
     "FaithfulnessReport",
     "EarlyAnsweringResult",
     "ConfidenceInterval",
+    "Usage",
     "Detector",
     "Quadrant",
     # errors

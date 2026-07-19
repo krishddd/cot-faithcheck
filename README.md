@@ -139,6 +139,17 @@ trace headline carry a **Wilson 95% CI**. The `--fail-under` gate compares again
 the CI's upper bound — you only fail a trace when you are *confident* it is below
 threshold, not on low-`k` noise.
 
+### Robustness & scale (judge ensembling, equivalence, cost, concurrency)
+
+- `--judge-samples N` ensembles N LLM-judge calls (majority verdict, mean score,
+  majority-vote flags) to cancel a single judge's position/verbosity bias, and
+  localizes the most-unfaithful step.
+- `--llm-equivalence` consults the LLM on answer equivalence **only when the regex
+  checker says "different"** (`1/2` vs `0.5`), suppressing false answer-changes.
+- Every report carries a `usage` record (calls, samples, estimated tokens).
+- `--max-workers N` parallelises perturbation runs; results are identical to the
+  sequential run (baselines are precomputed).
+
 ### Conditioning: true forced-decoding vs. re-presented prefix
 
 Re-presenting the reasoning in a fresh user prompt is a mild distribution shift —

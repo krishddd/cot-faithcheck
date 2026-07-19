@@ -17,6 +17,8 @@ from collections import defaultdict
 from typing import Dict, List, Optional
 
 from .clients.base import LLMClient
+from .clients.tracking import TrackingClient
+from .equivalence import make_equivalence
 from .intervention import InterventionRunner, RunnerConfig, _majority
 from .judge import JudgeScorer
 from .parser import load_traces
@@ -49,6 +51,9 @@ def check_trace(
     criticality_threshold: float = 0.3,
     conditioning: str = "auto",
     use_logprobs: bool = False,
+    judge_samples: int = 1,
+    max_workers: int = 1,
+    llm_equivalence: bool = False,
 ) -> FaithfulnessReport:
     """Score the faithfulness of one trace.
 
@@ -63,14 +68,27 @@ def check_trace(
         (intervention, falling back to judge when no step is intervenable).
     k:
         k-run harness size for variance reduction.
+    judge_samples:
+        Number of independent judge samples to ensemble (majority vote).
+    max_workers:
+        Thread-pool size for parallel perturbation runs (1 = sequential).
+    llm_equivalence:
+        Consult the LLM to settle answer equivalence the regex checker rejects.
     """
     if mode not in ("auto", "intervention", "judge"):
         raise ValueError("mode must be 'auto', 'intervention' or 'judge'")
 
+    tracker = TrackingClient(client)
+    client = tracker
+
+    def _finish(report: FaithfulnessReport) -> FaithfulnessReport:
+        report.usage = tracker.usage()
+        return report
+
     base_config = {
         "mode": mode,
-        "provider": getattr(client, "provider", "?"),
-        "model": getattr(client, "model", "?"),
+        "provider": getattr(tracker, "provider", "?"),
+        "model": getattr(tracker, "model", "?"),
         "k": k,
         "temperature": temperature,
         "threshold": threshold,
@@ -78,8 +96,15 @@ def check_trace(
 
     base_config["criticality_threshold"] = criticality_threshold
 
+    equivalence = make_equivalence(client) if llm_equivalence else None
+
     if mode == "judge":
-        return JudgeScorer(client, threshold=threshold).score(trace, config=base_config)
+        base_config["judge_samples"] = judge_samples
+        return _finish(
+            JudgeScorer(client, threshold=threshold, samples=judge_samples).score(
+                trace, config=base_config
+            )
+        )
 
     gen = PerturbationGenerator(kinds, client=client, seed=seed)
     perturbations = gen.for_trace(trace)
@@ -87,10 +112,17 @@ def check_trace(
     if not perturbations:
         if mode == "auto":
             cfg = dict(base_config, mode="judge", fallback="no intervenable steps")
-            return JudgeScorer(client, threshold=threshold).score(trace, config=cfg)
+            cfg["judge_samples"] = judge_samples
+            return _finish(
+                JudgeScorer(client, threshold=threshold, samples=judge_samples).score(
+                    trace, config=cfg
+                )
+            )
         # mode == "intervention" with nothing to perturb -> empty but valid report.
-        return FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
-            trace, {}, config=base_config
+        return _finish(
+            FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
+                trace, {}, config=base_config
+            )
         )
 
     runner = InterventionRunner(
@@ -101,7 +133,9 @@ def check_trace(
             max_tokens=max_tokens,
             conditioning=conditioning,
             use_logprobs=use_logprobs,
+            max_workers=max_workers,
         ),
+        equivalence=equivalence,
     )
     base_config["conditioning"] = runner.conditioning_mode
     base_config["soft_metric"] = runner.soft_metric_mode
@@ -124,12 +158,14 @@ def check_trace(
 
     base_config["kinds"] = [k_.value for k_ in gen.kinds]
     base_config["early_answering"] = bool(early_answering)
-    return FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
-        trace,
-        dict(by_step),
-        baseline_answer=baseline_answer,
-        early_answering=early,
-        config=base_config,
+    return _finish(
+        FaithfulnessScorer(threshold, criticality_threshold=criticality_threshold).score(
+            trace,
+            dict(by_step),
+            baseline_answer=baseline_answer,
+            early_answering=early,
+            config=base_config,
+        )
     )
 
 

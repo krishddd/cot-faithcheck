@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from statistics import mean
 from typing import List, Optional
@@ -62,47 +63,58 @@ class RunnerConfig:
     #: for before/after) when the client supports it, instead of the Monte-Carlo
     #: estimate over the k samples. Falls back to Monte-Carlo when unsupported.
     use_logprobs: bool = False
+    #: Thread-pool size for parallel perturbation runs (1 = sequential). Baselines
+    #: are precomputed before the parallel section so the shared cache is read-only.
+    max_workers: int = 1
 
     def __post_init__(self) -> None:
         if self.k < 1:
             raise ValueError("k must be >= 1")
         if self.conditioning not in ("auto", "prefill", "template"):
             raise ValueError("conditioning must be 'auto', 'prefill' or 'template'")
+        if self.max_workers < 1:
+            raise ValueError("max_workers must be >= 1")
 
 
-def _majority(answers: List[str]) -> str:
+def _majority(answers: List[str], eq=answers_equivalent) -> str:
     """Self-consistency majority vote over extracted answers."""
     counts: Counter = Counter()
-    canon = {}
     for a in answers:
         placed = False
         for key in list(counts):
-            if answers_equivalent(a, key):
+            if eq(a, key):
                 counts[key] += 1
                 placed = True
                 break
         if not placed:
             counts[a] += 1
-            canon[a] = a
     if not counts:
         return ""
     return counts.most_common(1)[0][0]
 
 
-def _prob_of(answers: List[str], target: str) -> float:
+def _prob_of(answers: List[str], target: str, eq=answers_equivalent) -> float:
     if not answers:
         return 0.0
-    hits = sum(1 for a in answers if answers_equivalent(a, target))
+    hits = sum(1 for a in answers if eq(a, target))
     return hits / len(answers)
 
 
 class InterventionRunner:
     """Runs counterfactual interventions through a k-run harness."""
 
-    def __init__(self, client: LLMClient, config: Optional[RunnerConfig] = None) -> None:
+    def __init__(
+        self,
+        client: LLMClient,
+        config: Optional[RunnerConfig] = None,
+        *,
+        equivalence=None,
+    ) -> None:
         self.client = client
         self.config = config or RunnerConfig()
         self._baseline_cache = {}
+        # Answer-equivalence checker (regex by default; may consult the LLM).
+        self._eq = equivalence or answers_equivalent
         # Resolve the conditioning mode once against the client's capability.
         want_prefill = self.config.conditioning in ("auto", "prefill")
         self.use_prefill = bool(want_prefill and getattr(client, "supports_prefill", False))
@@ -165,21 +177,21 @@ class InterventionRunner:
 
     def run(self, trace: Trace, perturbation: Perturbation) -> InterventionResult:
         baseline_answers = self._baseline_for(trace, perturbation.step_index)
-        baseline_answer = _majority(baseline_answers)
+        baseline_answer = _majority(baseline_answers, self._eq)
 
         prefix = self._corrupted_prefix(trace, perturbation)
         options = self._corrupted_options(trace, perturbation)
         perturbed_answers = self._sample(trace.question, prefix, options)
 
-        changed = sum(1 for a in perturbed_answers if not answers_equivalent(a, baseline_answer))
+        changed = sum(1 for a in perturbed_answers if not self._eq(a, baseline_answer))
         changed_fraction = changed / len(perturbed_answers) if perturbed_answers else 0.0
 
         matched_expected: Optional[float] = None
         if perturbation.expected_answer is not None:
-            matched_expected = _prob_of(perturbed_answers, perturbation.expected_answer)
+            matched_expected = _prob_of(perturbed_answers, perturbation.expected_answer, self._eq)
 
-        prob_before = _prob_of(baseline_answers, baseline_answer)
-        prob_after = _prob_of(perturbed_answers, baseline_answer)
+        prob_before = _prob_of(baseline_answers, baseline_answer, self._eq)
+        prob_after = _prob_of(perturbed_answers, baseline_answer, self._eq)
 
         # Precise single-call soft metric from answer-token log-probabilities, when
         # the client exposes them; otherwise keep the Monte-Carlo estimate above.
@@ -224,7 +236,7 @@ class InterventionRunner:
         if not perturbation.expected_answer:
             return 0.0
         probe = self._sample(trace.question, [], options)
-        return _prob_of(probe, perturbation.expected_answer)
+        return _prob_of(probe, perturbation.expected_answer, self._eq)
 
     def _answer_prob(self, trace: Trace, prefix_steps, options, answer: str):
         """P(``answer``) given a (possibly corrupted) prefix, via client log-probs.
@@ -253,12 +265,12 @@ class InterventionRunner:
         if n == 0:
             return None
         if final_answer is None:
-            final_answer = _majority(self._sample(trace.question, steps, trace.options))
+            final_answer = _majority(self._sample(trace.question, steps, trace.options), self._eq)
 
         convergence = []
         for kept in range(0, n):
             answers = self._sample(trace.question, steps[:kept], trace.options)
-            convergence.append((kept, _prob_of(answers, final_answer)))
+            convergence.append((kept, _prob_of(answers, final_answer, self._eq)))
 
         aoc = mean(1.0 - frac for _, frac in convergence) if convergence else 0.0
         return EarlyAnsweringResult(final_answer=final_answer, convergence=convergence, aoc=aoc)
@@ -285,4 +297,11 @@ class InterventionRunner:
 
     def run_all(self, trace: Trace, perturbations: List[Perturbation]) -> List[InterventionResult]:
         self._baseline_cache.clear()
+        if self.config.max_workers > 1 and len(perturbations) > 1:
+            # Precompute every step's baseline sequentially so the shared cache is
+            # read-only during the parallel section (avoids a double-compute race).
+            for idx in sorted({p.step_index for p in perturbations}):
+                self._baseline_for(trace, idx)
+            with ThreadPoolExecutor(max_workers=self.config.max_workers) as pool:
+                return list(pool.map(lambda p: self.run(trace, p), perturbations))
         return [self.run(trace, p) for p in perturbations]

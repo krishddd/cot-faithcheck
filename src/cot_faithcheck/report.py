@@ -161,6 +161,14 @@ def to_markdown(report: FaithfulnessReport) -> str:
             lines.append(f"| {kept} | {frac:.2f} | `{_bar(frac)}` |")
         lines.append("")
 
+    if report.usage is not None:
+        u = report.usage
+        lines.append(
+            f"<sub>usage: {u.n_calls} calls, {u.n_samples} samples, "
+            f"~{u.est_total_tokens} tokens (estimated)</sub>  "
+        )
+        lines.append("")
+
     lines.append("---")
     cfg = ", ".join(f"{k}={v}" for k, v in report.config.items())
     lines.append(f"<sub>config: {cfg}</sub>")
