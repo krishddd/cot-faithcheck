@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cot-faithcheck"
-version = "0.5.0"
+version = "0.5.1"
 description = "Score whether an agent's stated chain-of-thought actually drives its answer, via counterfactual step interventions and an LLM-judge fallback."
 readme = "README.md"
 license = { text = "MIT" }

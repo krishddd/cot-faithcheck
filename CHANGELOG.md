@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-07-16
+
+### Added
+- `py.typed` marker so downstream type-checkers use the shipped type hints (PEP 561).
+- `python -m cot_faithcheck` entry point (mirrors the `cot-faithcheck` console script).
+
+### Fixed
+- Verified the sdist/wheel build and confirmed all modules plus `py.typed` are packaged.
+
 ## [0.5.0] - 2026-07-16
 
 Robustness and scale (roadmap P3).
